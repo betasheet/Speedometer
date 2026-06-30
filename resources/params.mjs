@@ -20,6 +20,7 @@ class Params {
     waitBeforeSync = 0;
     // Warmup time before the sync step in ms.
     warmupBeforeSync = 0;
+    busyLoop = false;
     // Seed for shuffling the execution order of suites.
     // "off": do not shuffle
     // "generate": generate a random seed
@@ -98,6 +99,11 @@ class Params {
             if (this.warmupBeforeSync < 0)
                 throw new Error(`Invalid warmupBeforeSync param: '${this.warmupBeforeSync}', must be >= 0.`);
             searchParams.delete("warmupBeforeSync");
+        }
+
+        if (searchParams.has("busyLoop")) {
+            this.busyLoop = searchParams.get("busyLoop") === "true";
+            searchParams.delete("busyLoop");
         }
 
         if (searchParams.has("measurementMethod")) {

@@ -3,6 +3,34 @@ import { params } from "./params.mjs";
 
 const performance = globalThis.performance;
 
+let g_nextTestStarted = false;
+let g_busyLoopActive = false;
+
+function startMessageChannelBusyLoop(shouldStop) {
+    if (document.hidden)
+        return;
+    performance.mark("busy-loop-start");
+    g_busyLoopActive = true;
+    const channel = new MessageChannel();
+    const loop = () => {
+        if (shouldStop() || document.hidden) {
+            if (document.hidden && g_busyLoopActive) {
+                performance.mark("busy-loop-end");
+                performance.measure("busy-loop", "busy-loop-start", "busy-loop-end");
+                g_busyLoopActive = false;
+            }
+            return;
+        }
+        const start = performance.now();
+        while (performance.now() - start < 1) {
+            // Busy loop for 1ms
+        }
+        channel.port2.postMessage("");
+    };
+    channel.port1.onmessage = loop;
+    channel.port2.postMessage("");
+}
+
 export class BenchmarkTestStep {
     constructor(testName, testFunction) {
         this.name = testName;
@@ -274,11 +302,21 @@ class TimerTestInvoker extends TestInvoker {
     start() {
         return new Promise((resolve) => {
             setTimeout(() => {
+                if (params.busyLoop && g_busyLoopActive) {
+                    performance.mark("busy-loop-end");
+                    performance.measure("busy-loop", "busy-loop-start", "busy-loop-end");
+                    g_busyLoopActive = false;
+                }
+                g_nextTestStarted = true;
                 this._syncCallback();
                 setTimeout(() => {
                     this._asyncCallback();
                     requestAnimationFrame(async () => {
                         await this._reportCallback();
+                        if (params.busyLoop) {
+                            g_nextTestStarted = false;
+                            startMessageChannelBusyLoop(() => g_nextTestStarted);
+                        }
                         resolve();
                     });
                 }, 0);
@@ -298,12 +336,24 @@ class RAFTestInvoker extends TestInvoker {
     }
 
     _scheduleCallbacks(resolve) {
-        requestAnimationFrame(() => this._syncCallback());
+        requestAnimationFrame(() => {
+            if (params.busyLoop && g_busyLoopActive) {
+                performance.mark("busy-loop-end");
+                performance.measure("busy-loop", "busy-loop-start", "busy-loop-end");
+                g_busyLoopActive = false;
+            }
+            g_nextTestStarted = true;
+            this._syncCallback();
+        });
         requestAnimationFrame(() => {
             setTimeout(() => {
                 this._asyncCallback();
                 setTimeout(async () => {
                     await this._reportCallback();
+                    if (params.busyLoop) {
+                        g_nextTestStarted = false;
+                        startMessageChannelBusyLoop(() => g_nextTestStarted);
+                    }
                     resolve();
                 }, 0);
             }, 0);
@@ -422,6 +472,11 @@ export class BenchmarkRunner {
         this._measuredValues = { tests: {}, total: 0, mean: NaN, geomean: NaN, score: NaN };
         await this._wakeLock.request();
 
+        if (params.busyLoop) {
+            g_nextTestStarted = false;
+            startMessageChannelBusyLoop(() => g_nextTestStarted);
+        }
+
         const prepareStartLabel = "runner-prepare-start";
         const prepareEndLabel = "runner-prepare-end";
 
@@ -456,6 +511,12 @@ export class BenchmarkRunner {
     }
 
     async _finishRunAllSuites() {
+        g_nextTestStarted = true;
+        if (g_busyLoopActive) {
+            performance.mark("busy-loop-end");
+            performance.measure("busy-loop", "busy-loop-start", "busy-loop-end");
+            g_busyLoopActive = false;
+        }
         const finalizeStartLabel = "runner-finalize-start";
         const finalizeEndLabel = "runner-finalize-end";
 

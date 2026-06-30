@@ -22,6 +22,7 @@ export function createDeveloperModeContainer() {
     settings.append(createUIForWarmupSuite());
     settings.append(createUIForWarmupBeforeSync());
     settings.append(createUIForSyncStepDelay());
+    settings.append(createUIForBusyLoop());
 
     content.append(document.createElement("hr"));
     content.append(settings);
@@ -233,6 +234,23 @@ function createUIForRun() {
     return buttons;
 }
 
+function createUIForBusyLoop() {
+    let check = document.createElement("input");
+    check.type = "checkbox";
+    check.id = "busy-loop";
+    check.checked = !!params.busyLoop;
+
+    check.onchange = () => {
+        params.busyLoop = check.checked;
+        updateURL();
+    };
+
+    let label = document.createElement("label");
+    label.append(check, " ", span("Busy loop (MessageChannel)"));
+
+    return label;
+}
+
 function updateURL() {
     const url = new URL(window.location.href);
 
@@ -273,7 +291,7 @@ function updateURL() {
     else
         url.searchParams.delete("measurementMethod");
 
-    const boolParamKeys = ["iterationCount", "useWarmupSuite", "warmupBeforeSync", "waitBeforeSync"];
+    const boolParamKeys = ["iterationCount", "useWarmupSuite", "warmupBeforeSync", "waitBeforeSync", "busyLoop"];
     for (const paramKey of boolParamKeys) {
         if (params[paramKey] !== defaultParams[paramKey])
             url.searchParams.set(paramKey, params[paramKey]);
